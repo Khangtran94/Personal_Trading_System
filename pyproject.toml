@@ -32,6 +32,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/signal_bot"]
 
+# Important for src-layout: map the folder to the import name
+[tool.hatch.build.targets.wheel.sources]
+"src/signal_bot" = "signal_bot"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -42,3 +46,4 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["src"]
