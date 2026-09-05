@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     atr_sl_multiplier: float = Field(default=1.5, alias="ATR_SL_MULTIPLIER")
     rr_ratio: float = Field(default=2.0, alias="RR_RATIO")
 
+    # Risk sizing (for suggested margin in Telegram alerts)
+    account_equity: float = Field(default=1000.0, alias="ACCOUNT_EQUITY")
+    risk_per_trade_pct: float = Field(default=1.0, alias="RISK_PER_TRADE_PCT")
+    suggested_leverage: float = Field(default=10.0, alias="SUGGESTED_LEVERAGE")
+
     database_url: str = Field(default="sqlite:///./data/signals.db", alias="DATABASE_URL")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
