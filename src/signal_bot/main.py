@@ -18,8 +18,8 @@ from signal_bot.strategy.cooldown import CooldownManager
 from signal_bot.strategy.entry import EntryCalculator
 from signal_bot.strategy.scorer import Scorer
 from signal_bot.strategy.trend_filter import pass_trend_filter
-from signal_bot.telegram.bot import TelegramNotifier
-from signal_bot.telegram.formatter import format_signal
+from signal_bot.notify.bot import TelegramNotifier
+from signal_bot.notify.formatter import format_signal
 
 
 class SignalPipeline:
