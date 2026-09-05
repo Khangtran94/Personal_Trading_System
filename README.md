@@ -52,6 +52,26 @@ uv run python -m signal_bot.main
 
 The bot scans every 3 minutes during active hours.
 
+## Backtest (Phase 4a)
+
+Public Binance data only — **no API key required**.
+
+```bash
+# Default: 10 liquid symbols, last 60 days
+uv run python -m signal_bot.backtest
+
+# Custom symbols / period
+uv run python -m signal_bot.backtest --symbols BTCUSDT,ETHUSDT,SOLUSDT --days 90
+
+# Faster sampling (every 3rd 5m bar ≈ 15m cadence)
+uv run python -m signal_bot.backtest --step 3 --days 60
+
+# Write trade log
+uv run python -m signal_bot.backtest --csv data/backtest_60d.csv
+```
+
+Klines are cached under `data/backtest_cache/` for re-runs.
+
 ## Project Layout
 
 ```
@@ -60,9 +80,9 @@ src/signal_bot/
 ├── scanner/        # Top-volume + volatility filter
 ├── indicators/     # 8 indicators + ATR
 ├── strategy/       # Trend filter, scorer, entry, cooldown
-├── telegram/       # Formatter + notifier
+├── notify/         # Telegram formatter + notifier
 ├── database/       # SQLite signal storage
-├── backtest/       # (Phase 4 – coming)
+├── backtest/       # Multi-symbol walk-forward engine
 ├── config.py
 ├── scheduler.py
 └── main.py
@@ -99,7 +119,9 @@ xxxx
 | 1     | ✅     | Binance connection + Telegram + market data |
 | 2     | ✅     | Indicators + scoring + signal generation |
 | 3     | ✅     | Database + basic reports |
-| 4     | 🕐     | Backtesting engine + win-rate analysis |
+| 4a    | ✅     | Multi-symbol backtest engine + CLI report |
+| 4b    | 🔜     | Persist runs to DB |
+| 4c    | 🔜     | Streamlit dashboard |
 | 5     | 🔒     | Auto-trading (only if you explicitly ask) |
 
 ## Important Rules
