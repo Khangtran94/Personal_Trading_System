@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from signal_bot.backtest.data import default_symbols
 from signal_bot.backtest.engine import run_backtest
 from signal_bot.backtest.report import build_report, format_report, trades_to_rows
+from signal_bot.strategy.profiles import PROFILES, max_score
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,6 +37,25 @@ def parse_args() -> argparse.Namespace:
         default=96,
         help="Max 5m bars to hold (96 ≈ 8h)",
     )
+    p.add_argument(
+        "--profile",
+        type=str,
+        default="default",
+        choices=sorted(PROFILES.keys()),
+        help="Scoring weights: default (volume±2) | no_volume (volume ignored)",
+    )
+    p.add_argument(
+        "--buy-threshold",
+        type=int,
+        default=None,
+        help="Override SCORE_BUY_THRESHOLD (e.g. 12)",
+    )
+    p.add_argument(
+        "--sell-threshold",
+        type=int,
+        default=None,
+        help="Override SCORE_SELL_THRESHOLD (e.g. -12)",
+    )
     p.add_argument("--no-cache", action="store_true", help="Ignore kline disk cache")
     p.add_argument(
         "--csv",
@@ -57,19 +77,34 @@ async def async_main() -> None:
     else:
         symbols = default_symbols()
 
-    logger.info(f"Symbols ({len(symbols)}): {symbols}")
+    mx = max_score(args.profile)
+    logger.info(
+        f"Symbols ({len(symbols)}): {symbols} | profile={args.profile} "
+        f"(max |score|={mx}) | thresholds buy={args.buy_threshold} sell={args.sell_threshold}"
+    )
     trades = await run_backtest(
         symbols,
         days=args.days,
         max_hold_bars=args.max_hold_bars,
         step_bars=max(1, args.step),
         use_cache=not args.no_cache,
+        profile=args.profile,
+        buy_threshold=args.buy_threshold,
+        sell_threshold=args.sell_threshold,
     )
 
     report = build_report(trades)
     print(format_report(report, args.days, symbols))
+    print(f" Profile:       {args.profile} (max |score|={mx})")
+    if args.buy_threshold is not None or args.sell_threshold is not None:
+        print(
+            f" Thresholds:    buy>={args.buy_threshold} sell<={args.sell_threshold}"
+        )
 
-    out = args.csv.strip() or str(Path("data") / f"backtest_{args.days}d.csv")
+    tag = f"{args.profile}_s{args.step}"
+    if args.buy_threshold is not None:
+        tag += f"_b{args.buy_threshold}"
+    out = args.csv.strip() or str(Path("data") / f"backtest_{args.days}d_{tag}.csv")
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     rows = trades_to_rows(trades)
     if rows:

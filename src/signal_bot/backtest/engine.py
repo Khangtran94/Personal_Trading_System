@@ -61,10 +61,14 @@ async def backtest_symbol(
     max_hold_bars: int = 96,
     step_bars: int = 1,
     use_cache: bool = True,
+    profile: str = "default",
+    buy_threshold: int | None = None,
+    sell_threshold: int | None = None,
 ) -> list[SimulatedTrade]:
     """
     Walk 5m closed bars. Trend on 15m, score on 5m — same as live pipeline.
     step_bars=1 evaluates every 5m close (thorough). Use 3 to mimic ~15m cadence.
+    profile: scoring weights (default | no_volume).
     """
     settings = get_settings()
     warmup = timedelta(days=5)
@@ -78,7 +82,11 @@ async def backtest_symbol(
         return []
 
     registry = IndicatorRegistry()
-    scorer = Scorer()
+    scorer = Scorer(
+        profile=profile,
+        buy_threshold=buy_threshold,
+        sell_threshold=sell_threshold,
+    )
     entry_calc = EntryCalculator()
     cooldown = TimeCooldown(settings.cooldown_minutes)
 
@@ -155,6 +163,9 @@ async def run_backtest(
     max_hold_bars: int = 96,
     step_bars: int = 1,
     use_cache: bool = True,
+    profile: str = "default",
+    buy_threshold: int | None = None,
+    sell_threshold: int | None = None,
 ) -> list[SimulatedTrade]:
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
@@ -166,7 +177,7 @@ async def run_backtest(
         headers={"User-Agent": "signal-bot-backtest/0.1"},
     ) as client:
         for sym in symbols:
-            logger.info(f"Backtesting {sym} ({days}d)…")
+            logger.info(f"Backtesting {sym} ({days}d) profile={profile}…")
             try:
                 trades = await backtest_symbol(
                     sym,
@@ -176,6 +187,9 @@ async def run_backtest(
                     max_hold_bars=max_hold_bars,
                     step_bars=step_bars,
                     use_cache=use_cache,
+                    profile=profile,
+                    buy_threshold=buy_threshold,
+                    sell_threshold=sell_threshold,
                 )
                 all_trades.extend(trades)
             except Exception as e:
