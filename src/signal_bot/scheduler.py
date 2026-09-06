@@ -8,6 +8,7 @@ from loguru import logger
 
 from signal_bot.config import get_settings
 from signal_bot.main import SignalPipeline
+from signal_bot.paper.tracker import PaperTracker
 
 
 class BotScheduler:
@@ -15,6 +16,7 @@ class BotScheduler:
         self.pipeline = pipeline
         self.settings = get_settings()
         self.scheduler = AsyncIOScheduler(timezone=self.settings.timezone)
+        self.paper = PaperTracker(max_hold_hours=8.0)
         self._running = False
 
     def _is_active_hours(self) -> bool:
@@ -25,7 +27,7 @@ class BotScheduler:
         end = now.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
         return start <= now <= end
 
-    async def _job(self) -> None:
+    async def _scan_job(self) -> None:
         if not self._is_active_hours():
             logger.debug("Outside active hours – skip scan")
             return
@@ -34,19 +36,35 @@ class BotScheduler:
         except Exception as e:
             logger.exception(f"Pipeline error: {e}")
 
+    async def _paper_job(self) -> None:
+        try:
+            await self.paper.run_once()
+        except Exception as e:
+            logger.exception(f"Paper tracker error: {e}")
+
     def start(self) -> None:
-        # Run every 3 minutes (entry TF) during active hours
         self.scheduler.add_job(
-            self._job,
+            self._scan_job,
             trigger="interval",
             minutes=3,
             id="scan_and_signal",
             max_instances=1,
             coalesce=True,
         )
+        self.scheduler.add_job(
+            self._paper_job,
+            trigger="interval",
+            minutes=5,
+            id="paper_tracker",
+            max_instances=1,
+            coalesce=True,
+        )
         self.scheduler.start()
         self._running = True
-        logger.info("Scheduler started (every 3 min, active 07:00-23:00 Asia/Ho_Chi_Minh)")
+        logger.info(
+            "Scheduler started (scan every 3 min in active hours; "
+            "paper tracker every 5 min)"
+        )
 
     def stop(self) -> None:
         if self._running:
