@@ -40,3 +40,19 @@ def test_rsi_protection():
     scorer = Scorer()
     assert scorer.apply_protection("LONG", snap) is True
     assert scorer.apply_protection("SHORT", snap) is False
+
+
+def test_decide_closed_range():
+    """LONG only 10..12, SHORT only -12..-10 (rejects ±13+)."""
+    scorer = Scorer(
+        buy_threshold=10, buy_max=12,
+        sell_threshold=-12, sell_max=-10,
+    )
+    assert scorer.decide(9) is None
+    assert scorer.decide(10) == "LONG"
+    assert scorer.decide(12) == "LONG"
+    assert scorer.decide(13) is None
+    assert scorer.decide(-9) is None
+    assert scorer.decide(-10) == "SHORT"
+    assert scorer.decide(-12) == "SHORT"
+    assert scorer.decide(-13) is None

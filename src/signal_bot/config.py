@@ -26,8 +26,16 @@ class Settings(BaseSettings):
     active_start: str = Field(default="07:00", alias="ACTIVE_START")
     active_end: str = Field(default="23:00", alias="ACTIVE_END")
     cooldown_minutes: int = Field(default=30, alias="COOLDOWN_MINUTES")
+    # LONG range (inclusive): score_buy_threshold .. score_buy_max
+    # Example range 10..12 → SCORE_BUY_THRESHOLD=10, SCORE_BUY_MAX=12
+    # Set SCORE_BUY_MAX empty / omit to keep old behaviour (no upper cap).
     score_buy_threshold: int = Field(default=10, alias="SCORE_BUY_THRESHOLD")
-    score_sell_threshold: int = Field(default=-10, alias="SCORE_SELL_THRESHOLD")
+    score_buy_max: int | None = Field(default=12, alias="SCORE_BUY_MAX")
+    # SHORT range (inclusive): score_sell_threshold .. score_sell_max
+    # Convention: sell_threshold = more extreme (more negative), sell_max = closer to zero.
+    # Example range -12..-10 → SCORE_SELL_THRESHOLD=-12, SCORE_SELL_MAX=-10
+    score_sell_threshold: int = Field(default=-12, alias="SCORE_SELL_THRESHOLD")
+    score_sell_max: int | None = Field(default=-10, alias="SCORE_SELL_MAX")
     atr_sl_multiplier: float = Field(default=1.5, alias="ATR_SL_MULTIPLIER")
     rr_ratio: float = Field(default=2.0, alias="RR_RATIO")
 

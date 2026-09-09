@@ -63,12 +63,17 @@ class SignalPipeline:
             decided = self.scorer.decide(total)
             if decided != direction:
                 # Track near-misses for visibility
-                thr = self.settings.score_buy_threshold if direction == "LONG" else abs(self.settings.score_sell_threshold)
-                if abs(total) >= thr - 3:
-                    self._near_threshold.append((symbol, direction, total))
-                    logger.info(f"Near miss {symbol} {direction}: score={total} (need ≥{thr} or ≤-{thr})")
+                if direction == "LONG":
+                    lo, hi = self.settings.score_buy_threshold, self.settings.score_buy_max
+                    need = f"{lo}..{hi}" if hi is not None else f">={lo}"
                 else:
-                    logger.debug(f"{symbol} {direction}: trend OK, score={total} below threshold")
+                    lo, hi = self.settings.score_sell_threshold, self.settings.score_sell_max
+                    need = f"{lo}..{hi}" if hi is not None else f"<={lo}"
+                if abs(total) >= abs(self.settings.score_buy_threshold) - 3:
+                    self._near_threshold.append((symbol, direction, total))
+                    logger.info(f"Near miss {symbol} {direction}: score={total} (need {need})")
+                else:
+                    logger.debug(f"{symbol} {direction}: trend OK, score={total} outside range {need}")
                 continue
 
             if self.scorer.apply_protection(direction, snap):
