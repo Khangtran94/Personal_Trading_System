@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     atr_sl_multiplier: float = Field(default=1.5, alias="ATR_SL_MULTIPLIER")
     rr_ratio: float = Field(default=2.0, alias="RR_RATIO")
 
+    # Market regime filters (applied after per-symbol scoring)
+    # Minimum ATR as % of close on confirm TF (5m). Set 0 to disable.
+    min_atr_pct: float = Field(default=0.5, alias="MIN_ATR_PCT")
+    # Minimum coins sharing the same direction in one scan batch.
+    # Set 1 (or 0) to disable and emit every candidate.
+    min_batch_same_direction: int = Field(default=3, alias="MIN_BATCH_SAME_DIRECTION")
+
     # Risk sizing (for suggested margin in Telegram alerts)
     account_equity: float = Field(default=1000.0, alias="ACCOUNT_EQUITY")
     risk_per_trade_pct: float = Field(default=1.0, alias="RISK_PER_TRADE_PCT")

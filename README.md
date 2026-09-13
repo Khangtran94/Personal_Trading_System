@@ -11,6 +11,8 @@ You receive clean LONG / SHORT alerts on Telegram and decide yourself.
 - Strict scoring (−14 … +14) → only ≥ +10 (LONG) or ≤ −10 (SHORT)
 - 15m trend gate (EMA + Supertrend must agree)
 - RSI protection (no LONG when RSI > 80, no SHORT when RSI < 20)
+- **ATR% filter** – skip low-volatility setups (default min 0.5% ATR/price on 5m)
+- **Batch momentum filter** – only emit a direction when ≥ 3 coins agree in the same scan
 - Entry zone around EMA20 ± ATR, SL = 1.5 × ATR, TP = 1:2 RR
 - 30-minute same-coin cooldown
 - Active hours 07:00–23:00 Asia/Ho_Chi_Minh
@@ -79,7 +81,7 @@ src/signal_bot/
 ├── exchange/       # Binance USDT-M client (public data)
 ├── scanner/        # Top-volume + volatility filter
 ├── indicators/     # 8 indicators + ATR
-├── strategy/       # Trend filter, scorer, entry, cooldown
+├── strategy/       # Trend filter, market filters, scorer, entry, cooldown
 ├── notify/         # Telegram formatter + notifier
 ├── database/       # SQLite signal storage
 ├── backtest/       # Multi-symbol walk-forward engine
@@ -134,8 +136,3 @@ xxxx
 ## License
 
 Private / personal use.
-
-# 5. Chạy thật
-python -m signal_bot.main
-
-python -m signal_bot.paper --once để cập nhật kết quả WIN/LOSS.

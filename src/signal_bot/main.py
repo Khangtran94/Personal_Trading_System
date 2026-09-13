@@ -18,6 +18,12 @@ from signal_bot.notify.formatter import format_signal
 from signal_bot.scanner.volume_scanner import VolumeScanner
 from signal_bot.strategy.cooldown import CooldownManager
 from signal_bot.strategy.entry import EntryCalculator
+from signal_bot.strategy.market_filter import (
+    SignalCandidate,
+    compute_atr_pct,
+    filter_by_batch_momentum,
+    pass_atr_filter,
+)
 from signal_bot.strategy.scorer import Scorer
 from signal_bot.strategy.trend_filter import pass_trend_filter
 
@@ -34,17 +40,32 @@ class SignalPipeline:
         # Cycle stats
         self._trend_pass = 0
         self._near_threshold: list[tuple[str, str, int]] = []
+        self._atr_rejected = 0
         self._emitted = 0
 
-    async def analyze_symbol(self, client: BinanceFuturesClient, symbol: str) -> None:
+    async def collect_candidates(
+        self, client: BinanceFuturesClient, symbol: str
+    ) -> list[SignalCandidate]:
+        """Analyze one symbol; return zero or more validated candidates (no emit)."""
+        candidates: list[SignalCandidate] = []
+
         # 15m for trend filter
-        klines_15m = await client.get_klines(symbol, self.settings.main_tf, self.settings.kline_limit)
+        klines_15m = await client.get_klines(
+            symbol, self.settings.main_tf, self.settings.kline_limit
+        )
         if len(klines_15m) < 60:
-            return
+            return candidates
 
         snap_15m = self.registry.compute(klines_15m)
 
-        # Check both directions against trend gate
+        # Confirmation on 5m (stable scoring + ATR%)
+        klines_5m = await client.get_klines(
+            symbol, self.settings.confirm_tf, self.settings.kline_limit
+        )
+        if len(klines_5m) < 60:
+            return candidates
+        snap = self.registry.compute(klines_5m)
+
         for direction in ("LONG", "SHORT"):
             if not pass_trend_filter(snap_15m, direction):
                 continue
@@ -52,12 +73,6 @@ class SignalPipeline:
             if self.cooldown.is_cooling(symbol, direction):
                 logger.debug(f"{symbol} {direction} still in cooldown")
                 continue
-
-            # Confirmation on 5m (stable scoring)
-            klines_5m = await client.get_klines(symbol, self.settings.confirm_tf, self.settings.kline_limit)
-            if len(klines_5m) < 60:
-                continue
-            snap = self.registry.compute(klines_5m)
 
             total, ordered = self.scorer.score(snap)
             decided = self.scorer.decide(total)
@@ -71,13 +86,28 @@ class SignalPipeline:
                     need = f"{lo}..{hi}" if hi is not None else f"<={lo}"
                 if abs(total) >= abs(self.settings.score_buy_threshold) - 3:
                     self._near_threshold.append((symbol, direction, total))
-                    logger.info(f"Near miss {symbol} {direction}: score={total} (need {need})")
+                    logger.info(
+                        f"Near miss {symbol} {direction}: score={total} (need {need})"
+                    )
                 else:
-                    logger.debug(f"{symbol} {direction}: trend OK, score={total} outside range {need}")
+                    logger.debug(
+                        f"{symbol} {direction}: trend OK, score={total} outside range {need}"
+                    )
                 continue
 
             if self.scorer.apply_protection(direction, snap):
                 logger.info(f"Discard {symbol} {direction} – RSI protection")
+                continue
+
+            # ATR% volatility filter
+            if not pass_atr_filter(snap):
+                atr_pct = compute_atr_pct(snap)
+                self._atr_rejected += 1
+                atr_txt = f"{atr_pct:.3f}" if atr_pct is not None else "n/a"
+                logger.info(
+                    f"ATR filter reject {symbol} {direction}: "
+                    f"ATR%={atr_txt} (min={self.settings.min_atr_pct})"
+                )
                 continue
 
             plan = self.entry_calc.zone(snap, direction)
@@ -85,32 +115,86 @@ class SignalPipeline:
                 logger.debug(f"{symbol} {direction}: no entry plan (missing ATR/EMA)")
                 continue
 
-            # Format + send + store
+            atr_pct = compute_atr_pct(snap) or 0.0
             reason_text = "\n".join(r.reason for r in ordered)
-            msg = format_signal(symbol, direction, total, ordered, plan)
-            await self.notifier.send(msg)
-            self.repo.save(symbol, direction, total, reason_text, plan)
-            self.cooldown.mark(symbol, direction)
-            self._emitted += 1
-            logger.success(f"SIGNAL emitted: {symbol} {direction} score={total}")
+            candidates.append(
+                SignalCandidate(
+                    symbol=symbol,
+                    direction=direction,
+                    score=total,
+                    ordered=ordered,
+                    plan=plan,
+                    reason_text=reason_text,
+                    atr_pct=atr_pct,
+                )
+            )
+
+        return candidates
+
+    async def _emit(self, candidate: SignalCandidate) -> None:
+        msg = format_signal(
+            candidate.symbol,
+            candidate.direction,
+            candidate.score,
+            candidate.ordered,
+            candidate.plan,
+        )
+        await self.notifier.send(msg)
+        self.repo.save(
+            candidate.symbol,
+            candidate.direction,
+            candidate.score,
+            candidate.reason_text,
+            candidate.plan,
+        )
+        self.cooldown.mark(candidate.symbol, candidate.direction)
+        self._emitted += 1
+        logger.success(
+            f"SIGNAL emitted: {candidate.symbol} {candidate.direction} "
+            f"score={candidate.score} ATR%={candidate.atr_pct:.3f}"
+        )
 
     async def run_once(self) -> None:
         self._trend_pass = 0
         self._near_threshold = []
+        self._atr_rejected = 0
         self._emitted = 0
-        logger.info("Starting scan cycle…")
+        logger.info(
+            f"Starting scan cycle… "
+            f"(min_atr_pct={self.settings.min_atr_pct}, "
+            f"min_batch_same_dir={self.settings.min_batch_same_direction})"
+        )
+
+        all_candidates: list[SignalCandidate] = []
         async with BinanceFuturesClient() as client:
             scanner = VolumeScanner(client)
             symbols = await scanner.scan()
             for symbol in symbols:
                 try:
-                    await self.analyze_symbol(client, symbol)
+                    found = await self.collect_candidates(client, symbol)
+                    all_candidates.extend(found)
                 except Exception as e:
                     logger.warning(f"Error analyzing {symbol}: {e}")
 
+        # Batch same-direction momentum filter
+        before = len(all_candidates)
+        filtered = filter_by_batch_momentum(all_candidates)
+        dropped_batch = before - len(filtered)
+
+        for candidate in filtered:
+            try:
+                await self._emit(candidate)
+            except Exception as e:
+                logger.warning(
+                    f"Error emitting {candidate.symbol} {candidate.direction}: {e}"
+                )
+
         logger.info(
             f"Scan cycle finished | trend_pass={self._trend_pass} | "
-            f"near_miss={len(self._near_threshold)} | signals={self._emitted}"
+            f"near_miss={len(self._near_threshold)} | "
+            f"atr_reject={self._atr_rejected} | "
+            f"batch_drop={dropped_batch} | "
+            f"candidates={before}→{len(filtered)} | signals={self._emitted}"
         )
         if self._emitted == 0 and self._near_threshold:
             top = sorted(self._near_threshold, key=lambda x: abs(x[2]), reverse=True)[:5]
@@ -125,7 +209,9 @@ async def test_telegram() -> None:
     if ok:
         logger.success("Telegram test message sent")
     else:
-        logger.error("Telegram test failed – check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env")
+        logger.error(
+            "Telegram test failed – check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"
+        )
 
 
 async def main() -> None:
