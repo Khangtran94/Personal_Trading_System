@@ -134,3 +134,8 @@ xxxx
 ## License
 
 Private / personal use.
+
+# 5. Chạy thật
+python -m signal_bot.main
+
+python -m signal_bot.paper --once để cập nhật kết quả WIN/LOSS.
