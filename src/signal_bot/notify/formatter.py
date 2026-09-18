@@ -34,6 +34,9 @@ def format_signal(
     score: int,
     results: list[SignalResult],
     plan: EntryPlan,
+    rank: int = 0,
+    capital_pct: float = 100.0,
+    atr_pct: float | None = None,
 ) -> str:
     """Strict Telegram template. Indicator names English, Action Vietnamese."""
     reason_lines = []
@@ -53,13 +56,21 @@ def format_signal(
     risk = suggest_risk(plan, direction)
     risk_block = _format_risk_block(risk)
 
+    rank_line = f"Rank: {rank}" if rank > 0 else ""
+    capital_line = f"Capital: {capital_pct:.0f}%" if capital_pct > 0 else ""
+    atr_line = f"ATR%: {atr_pct:.2f}" if atr_pct is not None else ""
+    meta_lines = [x for x in (rank_line, capital_line, atr_line) if x]
+    meta_block = "\n".join(meta_lines)
+    if meta_block:
+        meta_block = "\n" + meta_block
+
     msg = f"""SIGNAL
 Coin:
 {symbol}
 Direction:
 {dir_line}
 Score:
-{score}/14
+{score}/14{meta_block}
 Reason:
 {reason_block}
 Action:

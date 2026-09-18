@@ -12,7 +12,8 @@ You receive clean LONG / SHORT alerts on Telegram and decide yourself.
 - 15m trend gate (EMA + Supertrend must agree)
 - RSI protection (no LONG when RSI > 80, no SHORT when RSI < 20)
 - **ATR% filter** – skip low-volatility setups (default min 0.5% ATR/price on 5m)
-- **Batch momentum filter** – only emit a direction when ≥ 3 coins agree in the same scan
+- **Batch momentum filter** – only emit a direction when ≥ N coins agree in the same scan
+- **Ranking layer** – rank by ATR% + entry quality; select Top 1–2 per direction with capital split (50/50 or 70/30)
 - Entry zone around EMA20 ± ATR, SL = 1.5 × ATR, TP = 1:2 RR
 - 30-minute same-coin cooldown
 - Active hours 07:00–23:00 Asia/Ho_Chi_Minh
@@ -100,6 +101,9 @@ Direction:
 LONG ⬆️
 Score:
 12/14
+Rank: 1
+Capital: 70%
+ATR%: 1.25
 Reason:
 ⬆️ EMA trend: BUY
 ⬆️ Supertrend: BUY
@@ -113,6 +117,13 @@ xxxx
 Take Profit:
 xxxx
 ```
+
+## Feature / Experiment Log
+
+See **[FEATURE_LOG.md](FEATURE_LOG.md)** for:
+- Full history of algorithm & filter changes
+- How to run every combination (ranking on/off, closeness, capital split…)
+- Commands to check quality and backtest
 
 ## Development Roadmap
 
@@ -131,7 +142,7 @@ xxxx
 - Never auto-trade unless you request it.
 - Always use closed candles.
 - Same-coin cooldown = 30 min.
-- Leverage reference = 10× (you choose size yourself).
+- Leverage reference = 10× (you choose size yourself according to Capital % on the signal).
 
 ## License
 

@@ -21,8 +21,10 @@ from signal_bot.strategy.entry import EntryCalculator
 from signal_bot.strategy.market_filter import (
     SignalCandidate,
     compute_atr_pct,
+    compute_entry_quality,
     filter_by_batch_momentum,
     pass_atr_filter,
+    rank_and_select,
 )
 from signal_bot.strategy.scorer import Scorer
 from signal_bot.strategy.trend_filter import pass_trend_filter
@@ -116,6 +118,7 @@ class SignalPipeline:
                 continue
 
             atr_pct = compute_atr_pct(snap) or 0.0
+            entry_quality = compute_entry_quality(snap, direction)
             reason_text = "\n".join(r.reason for r in ordered)
             candidates.append(
                 SignalCandidate(
@@ -126,6 +129,9 @@ class SignalPipeline:
                     plan=plan,
                     reason_text=reason_text,
                     atr_pct=atr_pct,
+                    entry_quality=entry_quality,
+                    close=snap.close,
+                    ema20=snap.ema20,
                 )
             )
 
@@ -138,6 +144,9 @@ class SignalPipeline:
             candidate.score,
             candidate.ordered,
             candidate.plan,
+            rank=candidate.rank,
+            capital_pct=candidate.capital_pct,
+            atr_pct=candidate.atr_pct,
         )
         await self.notifier.send(msg)
         self.repo.save(
@@ -151,6 +160,7 @@ class SignalPipeline:
         self._emitted += 1
         logger.success(
             f"SIGNAL emitted: {candidate.symbol} {candidate.direction} "
+            f"rank={candidate.rank} capital={candidate.capital_pct:.0f}% "
             f"score={candidate.score} ATR%={candidate.atr_pct:.3f}"
         )
 
@@ -162,7 +172,10 @@ class SignalPipeline:
         logger.info(
             f"Starting scan cycle… "
             f"(min_atr_pct={self.settings.min_atr_pct}, "
-            f"min_batch_same_dir={self.settings.min_batch_same_direction})"
+            f"min_batch_same_dir={self.settings.min_batch_same_direction}, "
+            f"ranking={self.settings.enable_ranking}, "
+            f"split={self.settings.capital_split_mode}, "
+            f"closeness={self.settings.rank_closeness_ratio})"
         )
 
         all_candidates: list[SignalCandidate] = []
@@ -181,7 +194,26 @@ class SignalPipeline:
         filtered = filter_by_batch_momentum(all_candidates)
         dropped_batch = before - len(filtered)
 
-        for candidate in filtered:
+        # Ranking + selection (Top 1–2 per direction)
+        if self.settings.enable_ranking and filtered:
+            ranked = rank_and_select(filtered)
+            selected = [c for c in ranked if c.selected]
+            not_selected = [c for c in ranked if not c.selected]
+            if not_selected:
+                logger.info(
+                    f"Ranking kept {len(selected)} / dropped {len(not_selected)}: "
+                    f"{[f'{c.symbol}({c.direction} R{c.rank})' for c in not_selected]}"
+                )
+        else:
+            # Ranking disabled → treat every filtered candidate as selected with 100%
+            ranked = filtered
+            for c in ranked:
+                c.selected = True
+                c.rank = 1
+                c.capital_pct = 100.0
+            selected = ranked
+
+        for candidate in selected:
             try:
                 await self._emit(candidate)
             except Exception as e:
@@ -194,7 +226,8 @@ class SignalPipeline:
             f"near_miss={len(self._near_threshold)} | "
             f"atr_reject={self._atr_rejected} | "
             f"batch_drop={dropped_batch} | "
-            f"candidates={before}→{len(filtered)} | signals={self._emitted}"
+            f"candidates={before}→{len(filtered)}→selected={len(selected)} | "
+            f"signals={self._emitted}"
         )
         if self._emitted == 0 and self._near_threshold:
             top = sorted(self._near_threshold, key=lambda x: abs(x[2]), reverse=True)[:5]
