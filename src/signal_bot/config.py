@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     # Set 1 (or 0) to disable and emit every candidate.
     min_batch_same_direction: int = Field(default=3, alias="MIN_BATCH_SAME_DIRECTION")
 
+    # Ranking & selection (applied after batch filter)
+    # Top-2 accepted only when its ATR% >= Top1_ATR% * rank_closeness_ratio.
+    # 0.75 ≈ within 25% of the leader. Set 0.0 to always take Top 2.
+    rank_closeness_ratio: float = Field(default=0.75, alias="RANK_CLOSENESS_RATIO")
+    # Capital split when both Top1 and Top2 selected: "50_50" or "70_30"
+    capital_split_mode: str = Field(default="70_30", alias="CAPITAL_SPLIT_MODE")
+    # Master switch (False = emit every coin that passed earlier filters)
+    enable_ranking: bool = Field(default=True, alias="ENABLE_RANKING")
+
     # Risk sizing (for suggested margin in Telegram alerts)
     account_equity: float = Field(default=1000.0, alias="ACCOUNT_EQUITY")
     risk_per_trade_pct: float = Field(default=1.0, alias="RISK_PER_TRADE_PCT")
