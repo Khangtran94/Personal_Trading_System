@@ -198,6 +198,10 @@ def rank_and_select(
     Rank candidates per direction and mark which ones are selected
     together with capital allocation.
 
+    LONGs use normal Top-1/Top-2 closeness logic.
+    SHORTs force Top-1 only when settings.short_rank_top1_only is True
+    (default) — Rank-2 SHORTs historically added noise with ~24% WR.
+
     Returns the full list (selected + not-selected) so callers can
     still track the ones that were filtered out by ranking.
     """
@@ -213,6 +217,13 @@ def rank_and_select(
     shorts = [c for c in candidates if c.direction == "SHORT"]
 
     ranked_longs = _rank_and_select_direction(longs, ratio, mode)
-    ranked_shorts = _rank_and_select_direction(shorts, ratio, mode)
+
+    # SHORTs: optionally force pure Top-1 (closeness ratio set impossibly high)
+    if settings.short_rank_top1_only:
+        short_ratio = 1.01  # Top2 ATR would need to exceed Top1 → never happens
+        logger.debug("SHORT ranking forced to Top-1 only (SHORT_RANK_TOP1_ONLY=true)")
+    else:
+        short_ratio = ratio
+    ranked_shorts = _rank_and_select_direction(shorts, short_ratio, mode)
 
     return ranked_longs + ranked_shorts

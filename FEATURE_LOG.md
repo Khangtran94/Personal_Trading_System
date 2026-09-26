@@ -79,6 +79,43 @@ Or edit `.env` and re-run.
 
 ## Change Log
 
+### 2026-09-26 – SHORT quality filters (RSI floor + Top-1 + loss-streak ban)
+
+**What changed**
+- `SHORT_MIN_RSI` (default 42): discard SHORT when RSI < threshold. Previous data showed mean SHORT RSI ≈ 36 with only ~24% WR (oversold bounce traps).
+- `SHORT_RANK_TOP1_ONLY` (default true): force pure Top-1 selection for SHORTs; LONGs keep normal Top-1/Top-2 closeness logic.
+- `SHORT_LOSS_STREAK_BAN` (default 2) + `SHORT_BAN_HOURS` (default 8): after N consecutive SHORT LOSSes on the same symbol, ban that symbol from further SHORTs for the configured hours. Stops repeated bleeders (ENA, PONS, NEAR, …).
+
+**Why**
+- SHORTs were the main drag on overall win rate (<50%). LONGs alone already had ~50% WR and +0.83R expectancy.
+- Ranking by ATR% did not solve the directional edge problem on the SHORT side.
+
+**New config keys**
+- `SHORT_MIN_RSI` (default 42)
+- `SHORT_RANK_TOP1_ONLY` (default true)
+- `SHORT_LOSS_STREAK_BAN` (default 2, set 0 to disable)
+- `SHORT_BAN_HOURS` (default 8)
+
+**How to verify**
+```bash
+export SHORT_MIN_RSI=42
+export SHORT_RANK_TOP1_ONLY=true
+export SHORT_LOSS_STREAK_BAN=2
+export SHORT_BAN_HOURS=8
+uv run python -m signal_bot.main --once
+# Look for:
+#   "Discard … SHORT – RSI protection (RSI=… < SHORT_MIN_RSI=42)"
+#   "SHORT ranking forced to Top-1 only"
+#   "SHORT ban activated: SYMBOL has N consecutive SHORT losses"
+```
+
+**Assumptions**
+- Raising the RSI floor removes most mean-reversion traps while still allowing SHORTs in continuing weakness.
+- Rank-2 SHORTs added more noise than edge → Top-1 only is safer.
+- Loss-streak ban is a simple way to stop coin-specific death spirals without a full blacklist.
+
+---
+
 ### 2026-09-18 – Ranking & Capital Allocation layer
 
 **What changed**
