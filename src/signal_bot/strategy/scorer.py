@@ -102,12 +102,18 @@ class Scorer:
         return None
 
     def apply_protection(self, direction: Direction, snapshot: IndicatorSnapshot) -> bool:
-        """Return True if signal should be discarded (exhausted move)."""
+        """Return True if signal should be discarded (exhausted / oversold move).
+
+        LONG:  discard when RSI > 80 (overbought exhaustion).
+        SHORT: discard when RSI < short_min_rsi (default 42).
+               Data showed SHORTs firing into RSI~36 with ~24% WR;
+               raising the floor avoids most bounce-trap entries.
+        """
         rsi = snapshot.rsi
         if rsi is None:
             return False
         if direction == "LONG" and rsi > 80:
             return True
-        if direction == "SHORT" and rsi < 20:
+        if direction == "SHORT" and rsi < self.settings.short_min_rsi:
             return True
         return False

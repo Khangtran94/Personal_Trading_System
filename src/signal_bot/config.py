@@ -55,6 +55,19 @@ class Settings(BaseSettings):
     # Master switch (False = emit every coin that passed earlier filters)
     enable_ranking: bool = Field(default=True, alias="ENABLE_RANKING")
 
+    # === SHORT-specific quality filters (2026-09-26) ===
+    # Minimum RSI allowed for a SHORT signal. Blocks oversold bounce traps.
+    # Data showed mean SHORT RSI ≈ 36 with ~24% WR; raising floor improves quality.
+    short_min_rsi: float = Field(default=42.0, alias="SHORT_MIN_RSI")
+    # Force Top-1 only for SHORTs (ignore RANK_CLOSENESS_RATIO for SHORT direction).
+    # LONGs still use full Top-1/Top-2 logic.
+    short_rank_top1_only: bool = Field(default=True, alias="SHORT_RANK_TOP1_ONLY")
+    # After this many consecutive SHORT LOSSes on the same symbol → ban that symbol
+    # from further SHORTs for short_ban_hours. Set 0 to disable.
+    short_loss_streak_ban: int = Field(default=2, alias="SHORT_LOSS_STREAK_BAN")
+    # Duration of the symbol SHORT ban after hitting the loss streak (hours).
+    short_ban_hours: float = Field(default=8.0, alias="SHORT_BAN_HOURS")
+
     # Risk sizing (for suggested margin in Telegram alerts)
     account_equity: float = Field(default=1000.0, alias="ACCOUNT_EQUITY")
     risk_per_trade_pct: float = Field(default=1.0, alias="RISK_PER_TRADE_PCT")
