@@ -92,6 +92,36 @@ class SignalRepository:
                 f"{result} R={r_multiple:+.2f}"
             )
 
+    def count_consecutive_short_losses(self, symbol: str, lookback: int = 20) -> int:
+        """
+        Count how many consecutive SHORT LOSSes the symbol has at the
+        most recent end of its closed SHORT history.
+
+        Used by the SHORT loss-streak ban. TIMEOUTs break the streak
+        (treated as non-LOSS). WIN also breaks the streak.
+        """
+        with Session(self.engine) as session:
+            stmt = (
+                select(SignalRecord)
+                .where(
+                    SignalRecord.symbol == symbol,
+                    SignalRecord.direction == "SHORT",
+                    SignalRecord.result.is_not(None),
+                )
+                .order_by(SignalRecord.id.desc())
+                .limit(lookback)
+            )
+            rows = list(session.scalars(stmt).all())
+            session.expunge_all()
+
+        streak = 0
+        for rec in rows:  # newest first
+            if rec.result == "LOSS":
+                streak += 1
+            else:
+                break
+        return streak
+
     def summary(self) -> dict:
         closed = self.list_closed(limit=10_000)
         open_n = len(self.list_open())
