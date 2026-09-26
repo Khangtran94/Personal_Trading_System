@@ -36,8 +36,9 @@ class SignalPipeline:
         self.registry = IndicatorRegistry()
         self.scorer = Scorer()
         self.entry_calc = EntryCalculator()
-        self.cooldown = CooldownManager()
         self.repo = SignalRepository()
+        self.cooldown = CooldownManager()
+        self.cooldown.bind_repo(self.repo)  # enable SHORT loss-streak ban
         self.notifier = TelegramNotifier()
         # Cycle stats
         self._trend_pass = 0
@@ -76,6 +77,14 @@ class SignalPipeline:
                 logger.debug(f"{symbol} {direction} still in cooldown")
                 continue
 
+            # SHORT loss-streak ban (2 consecutive SHORT losses → 8h cooldown)
+            if direction == "SHORT" and self.cooldown.is_short_banned(symbol):
+                logger.info(
+                    f"SHORT ban skip {symbol}: consecutive loss streak "
+                    f"(SHORT_LOSS_STREAK_BAN={self.settings.short_loss_streak_ban})"
+                )
+                continue
+
             total, ordered = self.scorer.score(snap)
             decided = self.scorer.decide(total)
             if decided != direction:
@@ -98,7 +107,16 @@ class SignalPipeline:
                 continue
 
             if self.scorer.apply_protection(direction, snap):
-                logger.info(f"Discard {symbol} {direction} – RSI protection")
+                rsi_val = snap.rsi
+                if direction == "SHORT":
+                    logger.info(
+                        f"Discard {symbol} SHORT – RSI protection "
+                        f"(RSI={rsi_val:.1f} < SHORT_MIN_RSI={self.settings.short_min_rsi})"
+                    )
+                else:
+                    logger.info(
+                        f"Discard {symbol} LONG – RSI protection (RSI={rsi_val:.1f} > 80)"
+                    )
                 continue
 
             # ATR% volatility filter
@@ -175,7 +193,10 @@ class SignalPipeline:
             f"min_batch_same_dir={self.settings.min_batch_same_direction}, "
             f"ranking={self.settings.enable_ranking}, "
             f"split={self.settings.capital_split_mode}, "
-            f"closeness={self.settings.rank_closeness_ratio})"
+            f"closeness={self.settings.rank_closeness_ratio}, "
+            f"short_min_rsi={self.settings.short_min_rsi}, "
+            f"short_top1={self.settings.short_rank_top1_only}, "
+            f"short_streak_ban={self.settings.short_loss_streak_ban}/{self.settings.short_ban_hours}h)"
         )
 
         all_candidates: list[SignalCandidate] = []
