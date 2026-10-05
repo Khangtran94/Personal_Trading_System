@@ -17,8 +17,11 @@ class BinanceFuturesClient:
     BASE_URL = "https://fapi.binance.com"
     # Status codes that mean "back off and retry"
     RETRY_STATUS = {418, 429, 403, 503}
-    MAX_RETRIES = 5
-    BASE_BACKOFF_SEC = 2.0  # 2, 4, 8, 16, 32
+    MAX_RETRIES = 4
+    BASE_BACKOFF_SEC = 2.0  # 2, 4, 8, 16
+    # Cap wait — Binance sometimes sends Retry-After of 4000+ seconds;
+    # sleeping that long blocks the scheduler (max_instances=1).
+    MAX_BACKOFF_SEC = 60.0
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -59,10 +62,17 @@ class BinanceFuturesClient:
                 resp = await self.client.get(path, params=params or {})
                 if resp.status_code in self.RETRY_STATUS:
                     wait = self.BASE_BACKOFF_SEC * (2 ** (attempt - 1))
-                    # Honour Retry-After if Binance sends it
+                    # Honour Retry-After but never sleep longer than MAX_BACKOFF_SEC
                     ra = resp.headers.get("Retry-After")
                     if ra and ra.isdigit():
-                        wait = max(wait, float(ra))
+                        ra_sec = float(ra)
+                        if ra_sec > self.MAX_BACKOFF_SEC:
+                            logger.warning(
+                                f"Binance Retry-After={ra_sec:.0f}s capped to "
+                                f"{self.MAX_BACKOFF_SEC:.0f}s (IP ban – stop bot or change IP)"
+                            )
+                        wait = min(max(wait, ra_sec), self.MAX_BACKOFF_SEC)
+                    wait = min(wait, self.MAX_BACKOFF_SEC)
                     logger.warning(
                         f"Binance {resp.status_code} on {path} "
                         f"(attempt {attempt}/{self.MAX_RETRIES}) – sleep {wait:.0f}s"
@@ -77,7 +87,10 @@ class BinanceFuturesClient:
                 resp.raise_for_status()
                 return resp.json()
             except httpx.TransportError as e:
-                wait = self.BASE_BACKOFF_SEC * (2 ** (attempt - 1))
+                wait = min(
+                    self.BASE_BACKOFF_SEC * (2 ** (attempt - 1)),
+                    self.MAX_BACKOFF_SEC,
+                )
                 logger.warning(
                     f"Binance network error on {path}: {e} "
                     f"(attempt {attempt}/{self.MAX_RETRIES}) – sleep {wait:.0f}s"
