@@ -46,7 +46,7 @@ class BotScheduler:
         self.scheduler.add_job(
             self._scan_job,
             trigger="interval",
-            minutes=3,
+            minutes=5,
             id="scan_and_signal",
             max_instances=1,
             coalesce=True,

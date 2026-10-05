@@ -71,7 +71,12 @@ uv run python -m signal_bot.backtest --step 3 --days 60
 
 # Write trade log
 uv run python -m signal_bot.backtest --csv data/backtest_60d.csv
+
+# Check report:
+uv run python -m signal_bot.paper --summary
 ```
+
+
 
 Klines are cached under `data/backtest_cache/` for re-runs.
 
