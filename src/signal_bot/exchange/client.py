@@ -15,6 +15,10 @@ class BinanceFuturesClient:
     """Public + optional authenticated client for Binance USDT-M Futures only."""
 
     BASE_URL = "https://fapi.binance.com"
+    # Status codes that mean "back off and retry"
+    RETRY_STATUS = {418, 429, 403, 503}
+    MAX_RETRIES = 5
+    BASE_BACKOFF_SEC = 2.0  # 2, 4, 8, 16, 32
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -23,8 +27,16 @@ class BinanceFuturesClient:
     async def __aenter__(self) -> "BinanceFuturesClient":
         self._client = httpx.AsyncClient(
             base_url=self.BASE_URL,
-            timeout=15.0,
-            headers={"User-Agent": "signal-bot/0.1"},
+            timeout=20.0,
+            headers={
+                # Browser-like UA reduces some WAF 418s vs bare bot strings
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json",
+            },
         )
         return self
 
@@ -40,9 +52,40 @@ class BinanceFuturesClient:
         return self._client
 
     async def _get(self, path: str, params: dict | None = None) -> Any:
-        resp = await self.client.get(path, params=params or {})
-        resp.raise_for_status()
-        return resp.json()
+        """GET with exponential backoff on 418/429/403/503."""
+        last_exc: Exception | None = None
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                resp = await self.client.get(path, params=params or {})
+                if resp.status_code in self.RETRY_STATUS:
+                    wait = self.BASE_BACKOFF_SEC * (2 ** (attempt - 1))
+                    # Honour Retry-After if Binance sends it
+                    ra = resp.headers.get("Retry-After")
+                    if ra and ra.isdigit():
+                        wait = max(wait, float(ra))
+                    logger.warning(
+                        f"Binance {resp.status_code} on {path} "
+                        f"(attempt {attempt}/{self.MAX_RETRIES}) – sleep {wait:.0f}s"
+                    )
+                    await asyncio.sleep(wait)
+                    last_exc = httpx.HTTPStatusError(
+                        f"{resp.status_code} for {path}",
+                        request=resp.request,
+                        response=resp,
+                    )
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.TransportError as e:
+                wait = self.BASE_BACKOFF_SEC * (2 ** (attempt - 1))
+                logger.warning(
+                    f"Binance network error on {path}: {e} "
+                    f"(attempt {attempt}/{self.MAX_RETRIES}) – sleep {wait:.0f}s"
+                )
+                await asyncio.sleep(wait)
+                last_exc = e
+        assert last_exc is not None
+        raise last_exc
 
     async def get_klines(
         self,
