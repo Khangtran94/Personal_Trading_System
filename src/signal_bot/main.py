@@ -31,15 +31,16 @@ from signal_bot.strategy.trend_filter import pass_trend_filter
 
 
 class SignalPipeline:
-    def __init__(self) -> None:
+    def __init__(self, *, repository=None, notifier=None, client_factory=None) -> None:
         self.settings = get_settings()
         self.registry = IndicatorRegistry()
         self.scorer = Scorer()
         self.entry_calc = EntryCalculator()
-        self.repo = SignalRepository()
+        self.repo = SignalRepository() if repository is None else repository
         self.cooldown = CooldownManager()
         self.cooldown.bind_repo(self.repo)  # enable SHORT loss-streak ban
-        self.notifier = TelegramNotifier()
+        self.notifier = TelegramNotifier() if notifier is None else notifier
+        self.client_factory = BinanceFuturesClient if client_factory is None else client_factory
         # Cycle stats
         self._trend_pass = 0
         self._near_threshold: list[tuple[str, str, int]] = []
@@ -130,7 +131,7 @@ class SignalPipeline:
                 )
                 continue
 
-            plan = self.entry_calc.zone(snap, direction)
+            plan = self.build_entry_plan(symbol, snap, direction)
             if plan is None:
                 logger.debug(f"{symbol} {direction}: no entry plan (missing ATR/EMA)")
                 continue
@@ -154,6 +155,10 @@ class SignalPipeline:
             )
 
         return candidates
+
+    def build_entry_plan(self, symbol, snapshot, direction):
+        """Legacy behavior by default; isolated paper runners may override this hook."""
+        return self.entry_calc.zone(snapshot, direction)
 
     async def _emit(self, candidate: SignalCandidate) -> None:
         msg = format_signal(
@@ -200,7 +205,7 @@ class SignalPipeline:
         )
 
         all_candidates: list[SignalCandidate] = []
-        async with BinanceFuturesClient() as client:
+        async with self.client_factory() as client:
             scanner = VolumeScanner(client)
             symbols = await scanner.scan()
             for symbol in symbols:
@@ -296,3 +301,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
