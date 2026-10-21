@@ -123,6 +123,10 @@ Take Profit:
 xxxx
 ```
 
+## Isolated corrected paper validation
+
+To keep the current bot running while testing a corrected paper engine in a separate checkout and database, see [Parallel paper validation](docs/PARALLEL_PAPER_VALIDATION.md). The new `python -m signal_bot.validation` runner never sends Telegram messages or places orders. Existing `signal_bot.main` and `signal_bot.paper` commands retain their legacy behavior.
+
 ## Feature / Experiment Log
 
 See **[FEATURE_LOG.md](FEATURE_LOG.md)** for:
@@ -152,3 +156,4 @@ See **[FEATURE_LOG.md](FEATURE_LOG.md)** for:
 ## License
 
 Private / personal use.
+
